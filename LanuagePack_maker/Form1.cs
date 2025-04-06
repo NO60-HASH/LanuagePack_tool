@@ -450,7 +450,6 @@ namespace LanuagePack_tool
 
             return skills;
         }
-
         private void button7_Click(object sender, EventArgs e)
         {
             if (!(comboBox4.SelectedValue is int))
@@ -516,11 +515,16 @@ namespace LanuagePack_tool
         private void button3_Click(object sender, EventArgs e)
         {
             richTextBox2.Text = "";
-            if(!(comboBox2.SelectedValue is int))
+            if (!(comboBox2.SelectedValue is int))
             {
                 MessageBox.Show("请先选择一个人格");
                 return;
             }
+            load_skills_data();
+
+        }
+        private void load_skills_data()
+        {
             //加载技能信息
             StringBuilder json = new StringBuilder();
             string path = $"{lang_dir}/Skills_personality-{((int)comboBox1.SelectedValue).ToString("00")}.json";
@@ -533,28 +537,51 @@ namespace LanuagePack_tool
                     json.AppendLine(line);
                 }
             }
+            skills_from_early_version = false;
             Skills_list = load_skills(json.ToString());
             int id = (int)comboBox2.SelectedValue;
-            skills_from_early_version = false;
             //如果技能列表中没有该id，则说明是早期版本的json
             if (!Skills_list.Any(u => (u.id / 100) == id))
             {
                 //从早期版本的json中加载技能
-                //skills_from_early_version = true;
-                //json = File.ReadAllText($"{lang_dir}/Skills.json");
-                //Skills_list = load_skills(json);
-                //早期技能列表太乱了
-                MessageBox.Show("该人格出现时间较早，暂时无法修改技能");
-            }
-            var skills = Skills_list.Where(u => (u.id / 100) == id).Select(u => new
-            {
-                u.id,
-                name = u.levelList.FirstOrDefault().name,
-            }).ToList();
+                //早期版本的json中技能过多，不使用list存储
+                skills_from_early_version = true;
+                StringBuilder sb = new StringBuilder();
+                using (var reader = new StreamReader($"{lang_dir}/Skills.json"))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        sb.AppendLine(line);
+                    }
+                }
+                JObject root = JObject.Parse(sb.ToString());
+                List<JObject> dataList = root["dataList"].ToObject<List<JObject>>();
+                var skills = dataList
+                    .Where(u => u["id"].ToString().StartsWith(id.ToString()))
+                    .Select(u => new
+                    {
+                        id = (int)u["id"],
+                        name = u["levelList"][0]["name"].ToString(),
+                    }).ToList();
 
-            comboBox3.ValueMember = "id";
-            comboBox3.DisplayMember = "name";
-            comboBox3.DataSource = skills;
+                comboBox3.ValueMember = "id";
+                comboBox3.DisplayMember = "name";
+                comboBox3.DataSource = skills;
+
+            }
+            else
+            {
+                var skills = Skills_list.Where(u => (u.id / 100) == id).Select(u => new
+                {
+                    u.id,
+                    name = u.levelList.FirstOrDefault().name,
+                }).ToList();
+
+                comboBox3.ValueMember = "id";
+                comboBox3.DisplayMember = "name";
+                comboBox3.DataSource = skills;
+            }
         }
 
         private void button5_Click(object sender, EventArgs e)
@@ -564,36 +591,67 @@ namespace LanuagePack_tool
                 MessageBox.Show("请先选择一个技能");
                 return;
             }
-            //修改技能名称
-            int id = (int)comboBox3.SelectedValue;
-            if (Skills_list.First(u => u.id == id).levelList.FirstOrDefault().name == richTextBox2.Text)
+            if (comboBox3.Text == richTextBox2.Text)
             {
                 return;
             }
+            int id = (int)comboBox3.SelectedValue;
+            //从旧版本json中加载技能,需要保存至旧版本json
+            if (skills_from_early_version)
+            {
+                StringBuilder sb = new StringBuilder();
+                using (var reader = new StreamReader($"{lang_dir}/Skills.json"))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        sb.AppendLine(line);
+                    }
+                }
+                JObject skills_root = JObject.Parse(sb.ToString());
+                List<JObject> dataList = skills_root["dataList"].ToObject<List<JObject>>();
+                var skills = dataList.Where(u => u["id"].ToString().StartsWith(id.ToString())).ToList();
+                foreach (JObject item in skills)
+                {
+                    JArray levelList = (JArray)item["levelList"];
+                    foreach (JObject level in levelList)
+                    {
+                        level["name"] = richTextBox2.Text;
+                    }
+                }
+                skills_root["dataList"] = JArray.FromObject(dataList);
+                File.WriteAllText($"{lang_dir}/Skills.json", skills_root.ToString());
+
+                //刷新列表中的信息
+                var skills_list = dataList
+                    .Where(u => u["id"].ToString().StartsWith(comboBox2.SelectedValue.ToString()))
+                    .Select(u => new
+                    {
+                        id = (int)u["id"],
+                        name = u["levelList"][0]["name"].ToString(),
+                    }).ToList();
+                comboBox3.ValueMember = "id";
+                comboBox3.DisplayMember = "name";
+                comboBox3.DataSource = skills_list;
+                comboBox3.SelectedValue = id;
+                MessageBox.Show("修改成功");
+                return;
+            }
+
+            //修改技能名称
             Skills_info skill = Skills_list.First(u => u.id == id);
             foreach (var level in skill.levelList)
             {
                 level.name = richTextBox2.Text;
             }
-            //保存修改至json中
+            //保存修改至新版json中
             string jsonString = JsonConvert.SerializeObject(Skills_list);
             JObject root = new JObject();
             JArray temp_arry = JArray.Parse(jsonString);
             root["dataList"] = temp_arry;
             File.WriteAllText($"{lang_dir}/Skills_personality-{((int)comboBox1.SelectedValue).ToString("00")}.json", root.ToString());
             //刷新列表中的信息
-            int index = comboBox3.SelectedIndex;
-            var skills = Skills_list.Where(u => (u.id / 100) == (int)comboBox2.SelectedValue).Select(u => new
-            {
-                u.id,
-                name = u.levelList.FirstOrDefault().name,
-            }).ToList();
-
-            comboBox3.ValueMember = "id";
-            comboBox3.DisplayMember = "name";
-            comboBox3.DataSource = skills;
-            comboBox3.SelectedIndex = index;
-            MessageBox.Show("修改成功");
+            load_skills_data();
         }
 
         private void comboBox3_SelectedIndexChanged(object sender, EventArgs e)
