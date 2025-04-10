@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace LanuagePack_tool
@@ -180,6 +181,65 @@ namespace LanuagePack_tool
                 Console.WriteLine("Error: " + ex.Message);
                 return false;
             }
+        }
+        /// <summary>
+        /// 比较两个json文件中的dataList是否相同
+        /// </summary>
+        /// <param name="list1"></param>
+        /// <param name="list2"></param>
+        /// <returns></returns>
+        public static bool AreListsEqualUnordered(List<JObject> list1, List<JObject> list2)
+        {
+            if (list1.Count != list2.Count) return false;
+
+            for (int i = 0; i < list1.Count; i++)
+            {
+                if (list1[i].ToString() != list2[i].ToString())
+                    return false;
+            }
+            return true;
+        }
+        ///<summary>
+        ///将旧json文件中经过修改的内容写入新json文件
+        ///</summary>
+        public static int update_pack(string old_path,string new_path)
+        {
+            if(!File.Exists(new_path))
+            {
+                //新json文件不存在
+                return -1;
+            }
+            //读取旧json文件
+            List<JObject> oldDataList = read_json(old_path);
+            //读取新json文件
+            List<JObject> newDataList = read_json(new_path);
+            if(AreListsEqualUnordered(newDataList, oldDataList))
+            {
+                //两个json文件相同
+                return 0;
+            }
+            //对比新旧json文件，将旧json文件中经过修改的内容写入新json文件
+            for (int i = 0; i < oldDataList.Count; i++)
+            {
+                var oldItem = oldDataList[i];
+                var newItem = newDataList.FirstOrDefault(x => x["id"]?.ToString() == oldItem["id"]?.ToString());
+                if(newItem is null)
+                {
+                    //找不到对应id
+                    return -1;
+                }
+                if (oldItem != null && !JToken.DeepEquals(oldItem, newItem))
+                {
+                    // 直接替换列表中的对象
+                    newDataList[i] = oldItem;
+                }
+            }
+            //保存新json文件
+            JObject jsonObject = new JObject();
+            jsonObject["dataList"] = JArray.FromObject(newDataList);
+            File.WriteAllText(new_path, jsonObject.ToString());
+
+            return 1;
         }
     }
 }

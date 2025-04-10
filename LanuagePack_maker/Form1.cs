@@ -8,6 +8,7 @@ using Ookii.Dialogs.WinForms;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
+using System.Threading.Tasks;
 
 namespace LanuagePack_tool
 {
@@ -18,6 +19,7 @@ namespace LanuagePack_tool
             InitializeComponent();
         }
         string lang_dir = null;
+        string new_lang_dir = null;
 
         private void Form1_Load(object sender, EventArgs e)
         {
@@ -28,7 +30,7 @@ namespace LanuagePack_tool
         private void button1_Click(object sender, EventArgs e)
         {
             comboBox1.DataSource = null;
-            MessageBox.Show("请做好语言包备份，以免出现错误后无法恢复", "提示");
+            //MessageBox.Show("请做好语言包备份，以免出现错误后无法恢复", "提示");
             VistaFolderBrowserDialog dialog = new VistaFolderBrowserDialog();
             if (dialog.ShowDialog() == DialogResult.OK)
             {
@@ -37,6 +39,7 @@ namespace LanuagePack_tool
                 {
                     //选择了正确的语言包
                     label2.Visible = true;
+                    label2.Text = "已选择语言包:" + Path.GetFileName(dir);
                     lang_dir = dir;
                     //加载罪人列表
                     var dataList = dataContor.read_json(lang_dir + "/Characters.json").Select(u => new
@@ -51,6 +54,8 @@ namespace LanuagePack_tool
                 }
                 else
                 {
+                    lang_dir = null;
+                    label2.Visible = false;
                     MessageBox.Show("选中的文件夹可能不是语言包");
                 }
             }
@@ -110,7 +115,7 @@ namespace LanuagePack_tool
 
         private void button6_Click(object sender, EventArgs e)
         {
-            if (comboBox2.SelectedValue is not int)
+            if (comboBox2.SelectedValue is null)
             {
                 MessageBox.Show("请先选择一个人格");
                 return;
@@ -383,6 +388,89 @@ namespace LanuagePack_tool
                 }).ToList();
             //绑定数据源
             dataGridView1.DataSource = ego_voice_list;
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            VistaFolderBrowserDialog dialog = new VistaFolderBrowserDialog();
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                string dir = dialog.SelectedPath;
+                if (Directory.Exists(dir + "/StoryData") && Directory.Exists(dir + "/BattleAnnouncerDlg") && File.Exists(dir + "/Personalities.json"))
+                {
+                    //选择了正确的语言包
+                    label15.Visible = true;
+                    label15.Text = "已选择语言包:" + Path.GetFileName(dir);
+                    new_lang_dir = dir;
+                }
+                else
+                {
+                    new_lang_dir = null;
+                    MessageBox.Show("选中的文件夹可能不是语言包");
+                    label15.Visible = false;
+                }
+            }
+        }
+        private async void button4_Click(object sender, EventArgs e)
+        {
+            if (lang_dir == null)
+            {
+                MessageBox.Show("请先选择一个语言包");
+                return;
+            }
+            if (new_lang_dir == null)
+            {
+                MessageBox.Show("请先选择新的语言包");
+                return;
+            }
+            if(lang_dir == new_lang_dir)
+            {
+                MessageBox.Show("新语言包和旧语言包相同，请重新选择");
+                return;
+            }
+            //更新语言包
+            int jump = 0, done = 0, lost = 0;
+            //获取文件列表
+            string[] allFiles = Directory.GetFiles(new_lang_dir, "*.json", SearchOption.AllDirectories)
+                    .Select(f => f.Substring(new_lang_dir.Length + 1))  // 获取相对路径
+                    .Where(f => !f.StartsWith("Info\\"))
+                    .ToArray();
+
+            button4.Enabled = false; // 禁用按钮防止重复点击
+            label14.Visible = true;
+            try
+            {
+                await Task.Run(() => {
+                    foreach (string file in allFiles)
+                    {
+                        switch (dataContor.update_pack(lang_dir + "\\" + file, new_lang_dir + "\\" + file))
+                        {
+                            case 1:
+                                done++;
+                                break;
+                            case 0:
+                                jump++;
+                                break;
+                            case -1:
+                                lost++;
+                                MessageBox.Show($"修改文件{file}时出现问题，请手动修改");
+                                break;
+                        }
+                    }
+                });
+                MessageBox.Show($"更新语言包结束，\n完成：{done}\n跳过：{jump}\n未找到：{lost}");
+                label15.Visible = false;
+                new_lang_dir = null;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"出错: {ex.Message}");
+            }
+            finally
+            {
+                button4.Enabled = true;
+                label14.Visible = false;
+            }
         }
     }
 }
